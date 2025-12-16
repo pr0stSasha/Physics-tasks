@@ -3,8 +3,28 @@ import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
 from matplotlib.animation import FuncAnimation
 
-def simulate_projectile(v0: float, angle_deg: float, k: float, mode: str, 
-                        mass: float = 1.0, g: float = 9.81, max_time: float = 200):
+
+G = 9.81
+DEFAULT_MASS = 1.0
+MAX_TIME = 200
+TIME_STEPS = 150
+VELOCITY_EPS = 1e-8
+SOLVER_RTOL = 1e-7
+
+
+HIGH_SPEED_V0 = [40, 60, 80]
+HIGH_SPEED_ANGLES = [30, 45, 60]
+HIGH_SPEED_K = 0.01
+HIGH_SPEED_MASSES = [1, 5, 20]
+
+LOW_SPEED_V0 = 15
+LOW_SPEED_ANGLES = [30, 45, 60]
+LOW_SPEED_K_VALUES = [0.2, 0.5, 1.0]
+LOW_SPEED_MASSES = [0.5, 1, 2]
+
+
+def simulate_projectile(v0: float, angle_deg: float, k: float, mode: str,
+                        mass: float = DEFAULT_MASS, g: float = G, max_time: float = MAX_TIME):
     
     angle_rad = np.radians(angle_deg)
     state0 = [0, 0, v0 * np.cos(angle_rad), v0 * np.sin(angle_rad)]
@@ -12,7 +32,7 @@ def simulate_projectile(v0: float, angle_deg: float, k: float, mode: str,
     def derivatives(t, state):
         x, y, vx, vy = state
         v = np.sqrt(vx**2 + vy**2)
-        if v < 1e-8:
+        if v < VELOCITY_EPS:
             return [vx, vy, 0, -g]
         if mode == 'linear':
             F_res = k * v
@@ -26,16 +46,25 @@ def simulate_projectile(v0: float, angle_deg: float, k: float, mode: str,
 
     def hit_ground(t, state):
         return state[1]
+
     hit_ground.terminal = True
     hit_ground.direction = -1
 
-    sol = solve_ivp(derivatives, [0, max_time], state0, events=hit_ground, 
-                    dense_output=True, rtol=1e-7)
+    sol = solve_ivp(
+        derivatives,
+        [0, max_time],
+        state0,
+        events=hit_ground,
+        dense_output=True,
+        rtol=SOLVER_RTOL
+    )
 
     t_final = sol.t_events[0][0] if sol.t_events[0].size > 0 else sol.t[-1]
-    t_eval = np.linspace(0, t_final, 150)
+    t_eval = np.linspace(0, t_final, TIME_STEPS)
     traj = sol.sol(t_eval)
+
     return traj[0], traj[1]
+
 
 def animate_session(session_name: str, experiments: list):
 
@@ -78,46 +107,47 @@ def animate_session(session_name: str, experiments: list):
                 artists.extend([line_obj, point_obj])
         return artists
 
-    ani = FuncAnimation(fig, update, frames=150, interval=1, blit=True, repeat=False)
+    ani = FuncAnimation(fig, update, frames=TIME_STEPS, interval=1, blit=True, repeat=False)
     plt.show()
 
 
 if __name__ == "__main__":
+
     session1 = [
         ("Лобовое vs Вакуум (V0=80, 45°)", [
             (simulate_projectile(80, 45, 0, 'none'), 'Вакуум', 'blue'),
-            (simulate_projectile(80, 45, 0.01, 'quadratic'), 'Лобовое', 'green')
+            (simulate_projectile(80, 45, HIGH_SPEED_K, 'quadratic'), 'Лобовое', 'green')
         ]),
         ("Углы (V0=70, Лобовое)", [
-            (simulate_projectile(70, ang, 0.01, 'quadratic'), f'Угол {ang}°', None) 
-            for ang in [30, 45, 60]
+            (simulate_projectile(70, ang, HIGH_SPEED_K, 'quadratic'), f'Угол {ang}°', None)
+            for ang in HIGH_SPEED_ANGLES
         ]),
         ("Разная V0 (45°, Лобовое)", [
-            (simulate_projectile(v, 45, 0.01, 'quadratic'), f'V0={v}м/с', None) 
-            for v in [40, 60, 80]
+            (simulate_projectile(v, 45, HIGH_SPEED_K, 'quadratic'), f'V0={v}м/с', None)
+            for v in HIGH_SPEED_V0
         ]),
         ("Разная масса (V0=70, 45°)", [
-            (simulate_projectile(70, 45, 0.01, 'quadratic', mass=m_val), f'm={m_val}кг', None) 
-            for m_val in [1, 5, 20]
+            (simulate_projectile(70, 45, HIGH_SPEED_K, 'quadratic', mass=m_val), f'm={m_val}кг', None)
+            for m_val in HIGH_SPEED_MASSES
         ])
     ]
 
     session2 = [
         ("Вязкое vs Вакуум (V0=15)", [
-            (simulate_projectile(15, 45, 0, 'none'), 'Вакуум', 'blue'),
-            (simulate_projectile(15, 45, 0.5, 'linear'), 'Вязкое', 'orange')
+            (simulate_projectile(LOW_SPEED_V0, 45, 0, 'none'), 'Вакуум', 'blue'),
+            (simulate_projectile(LOW_SPEED_V0, 45, 0.5, 'linear'), 'Вязкое', 'orange')
         ]),
         ("Углы в вязкой среде", [
-            (simulate_projectile(15, ang, 0.5, 'linear'), f'Угол {ang}°', None) 
-            for ang in [30, 45, 60]
+            (simulate_projectile(LOW_SPEED_V0, ang, 0.5, 'linear'), f'Угол {ang}°', None)
+            for ang in LOW_SPEED_ANGLES
         ]),
         ("Разная вязкость k", [
-            (simulate_projectile(15, 45, k_val, 'linear'), f'k={k_val}', None) 
-            for k_val in [0.2, 0.5, 1.0]
+            (simulate_projectile(LOW_SPEED_V0, 45, k_val, 'linear'), f'k={k_val}', None)
+            for k_val in LOW_SPEED_K_VALUES
         ]),
         ("Разная масса", [
-            (simulate_projectile(15, 45, 0.5, 'linear', mass=m_val), f'm={m_val}кг', None) 
-            for m_val in [0.5, 1, 2]
+            (simulate_projectile(LOW_SPEED_V0, 45, 0.5, 'linear', mass=m_val), f'm={m_val}кг', None)
+            for m_val in LOW_SPEED_MASSES
         ])
     ]
 
